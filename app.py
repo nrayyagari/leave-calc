@@ -18,19 +18,14 @@ from leavecalc import (
 
 st.set_page_config(page_title="Leave Calculator", page_icon="📅", layout="centered")
 
-# ---------- Polite helpers ----------
+# ---------- Helpers ----------
 def _fmt_date(d: dt.date) -> str:
     return f"{d.isoformat()} · {calendar.day_name[d.weekday()][:3]} {d.day} {calendar.month_name[d.month][:3]}"
 
 
-def _normalize_dates(value) -> list[dt.date]:
-    """st.date_input returns a single date or a list-tuple; normalize to list."""
-    if value is None:
-        return []
-    if isinstance(value, (list, tuple)):
-        return sorted(set(value))
-    return [value]
-
+# ---------- Initialize session state for accumulated leaves ----------
+if "leaves" not in st.session_state:
+    st.session_state.leaves = []  # list[dt.date]
 
 # ---------- Header ----------
 st.title("📅 Leave Calculator")
@@ -69,11 +64,10 @@ with col_s:
         label_visibility="collapsed",
     )
 
-# Shift timing (free text, defaults to 13:30–22:30 IST)
 shift_time = st.text_input(
     "Shift timing (IST)",
     value="13:30 – 22:30 IST",
-    help="Editable. Included verbatim in the note to your manager.",
+    help="Editable. Included verbatim in the summary to your manager.",
 )
 
 month_start = dt.date(int(year), int(month), 1)
@@ -85,54 +79,74 @@ st.info(
     f"{STATE_LABELS[state]}"
 )
 
-# ---------- Step 2: pick leave dates ----------
+# ---------- Step 2: pick leave dates (accumulating) ----------
 st.subheader("2 · Pick leave dates")
-picked_raw = st.date_input(
-    "Pick dates (click each one; pick multiple)",
-    value=[],
-    min_value=month_start,
-    max_value=month_end,
-    help="Click each date you took leave. Below they appear as tickable options — untick any you don't want counted.",
-    label_visibility="collapsed",
-)
-picked = _normalize_dates(picked_raw)
 
-# ---------- Step 2b: tickable confirm ----------
+# Sub-UI: pick one date at a time, add to session_state list
+picker_cols = st.columns([3, 1, 1])
+with picker_cols[0]:
+    new_date = st.date_input(
+        "Add a leave date",
+        value=None,
+        min_value=month_start,
+        max_value=month_end,
+        label_visibility="collapsed",
+        help="Pick a date and click 'Add'. Repeat for each leave date.",
+    )
+with picker_cols[1]:
+    if st.button("＋ Add", use_container_width=True):
+        if new_date is not None:
+            d = dt.date(int(year), int(month), new_date.day)
+            if d not in st.session_state.leaves:
+                st.session_state.leaves.append(d)
+                st.session_state.leaves.sort()
+            st.rerun()
+with picker_cols[2]:
+    if st.button("✕ Clear all", use_container_width=True):
+        st.session_state.leaves = []
+        st.rerun()
+
+# Show currently accumulated leaves as tickable checkboxes (untick to remove)
 confirmed_leaves: list[dt.date] = []
-if picked:
-    st.write("**Confirm leaves** — untick to exclude:")
-    for d in picked:
-        label = _fmt_date(d)
-        if st.checkbox(label, value=True, key=f"lv_{d.isoformat()}"):
+if st.session_state.leaves:
+    st.write("**Selected leave dates**  ·  _untick to remove_")
+    cols_per_row = 3
+    # Render as a grid of checkboxes using st.columns
+    for idx, d in enumerate(st.session_state.leaves):
+        if d.month != int(month) or d.year != int(year):
+            continue
+        if st.checkbox(_fmt_date(d), value=True, key=f"lv_{d.isoformat()}"):
             confirmed_leaves.append(d)
 else:
-    st.caption("_No leave dates picked yet._")
+    st.caption("_No leave dates selected yet._")
 
-# ---------- Compute ----------
+# ---------- Step 3: Calculate ----------
 st.write("")
-if st.button("Calculate working days", type="primary", use_container_width=True):
+if st.button("Calculate", type="primary", use_container_width=True):
     result = compute_month(int(month), int(year), state, confirmed_leaves)
 
-    # ----- Result banner -----
+    # ----- Result -----
     st.write("---")
     st.subheader("3 · Result")
-    big1, big2 = st.columns([1, 1])
-    big1.metric(
+
+    # Top row — the two numbers that matter, large and aligned
+    r1c1, r1c2 = st.columns(2)
+    r1c1.metric(
         label=f"Net working days · {calendar.month_name[month]} {year}",
         value=f"{result.working_days:.0f}",
     )
-    big2.metric(
+    r1c2.metric(
         label="Leaves counted",
         value=f"{len(result.leave_days_used)}",
     )
 
-    # ----- Compact breakdown -----
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total days", result.total_days)
-    c2.metric("Public holidays", len(result.public_holidays))
-    c3.metric("Leaves taken", len(result.leave_days_used))
+    # Compact breakdown — 3 numbers, aligned
+    r2c1, r2c2, r2c3 = st.columns(3)
+    r2c1.metric("Total days", result.total_days)
+    r2c2.metric("Public holidays", len(result.public_holidays))
+    r2c3.metric("Leaves taken", len(result.leave_days_used))
 
-    # ----- Warnings (overlapping leaves) -----
+    # Warnings
     if result.leave_on_nonworking:
         with st.expander(f"⚠️ {len(result.leave_on_nonworking)} leave(s) fell on weekends/holidays — not deducted"):
             ph_dates = {pd for pd, _ in result.public_holidays}
@@ -144,7 +158,7 @@ if st.button("Calculate working days", type="primary", use_container_width=True)
                     tags.append("public holiday")
                 st.write(f"- {_fmt_date(d)}  ·  _{' / '.join(tags)}_")
 
-    # ----- Detail expanders (kept collapsed by default) -----
+    # Optional detail — collapsed by default
     with st.expander("Public holidays this month"):
         if result.public_holidays:
             for d, n in result.public_holidays:
@@ -159,22 +173,22 @@ if st.button("Calculate working days", type="primary", use_container_width=True)
         else:
             st.write("_none — no working-day leaves._")
 
-    # ---------- Manager note (compact: only public holidays + leaves) ----------
+    # ---------- Summary (forwardable note) ----------
     st.write("---")
-    st.subheader("4 · Note for your manager")
+    st.subheader("4 · Summary")
     note_lines = [
-        f"Subject: Leave note — {calendar.month_name[month]} {year}",
+        f"Subject: Leave summary — {calendar.month_name[month]} {year}",
         "",
         "Hi [Manager],",
         "",
         f"Please find below my leave summary for {calendar.month_name[month]} {year}:",
         "",
-        f"  Shift timing               : {shift_time}",
-        f"  Total calendar days         : {result.total_days}",
-        f"  Public / gazetted holidays   : {len(result.public_holidays)}",
-        f"  Leaves taken                 : {len(result.leave_days_used)}",
+        f"  Shift timing                 : {shift_time}",
+        f"  Total calendar days          : {result.total_days}",
+        f"  Public / gazetted holidays    : {len(result.public_holidays)}",
+        f"  Leaves taken                  : {len(result.leave_days_used)}",
         "",
-        f"  Net working days             = {result.working_days:.0f}",
+        f"  Net working days              = {result.working_days:.0f}",
         "",
     ]
     if result.public_holidays:
@@ -190,12 +204,12 @@ if st.button("Calculate working days", type="primary", use_container_width=True)
     note_lines += ["Thanks,", "[Your name]"]
     note_text = "\n".join(note_lines)
 
-    # st.code renders with a one-click copy icon (top-right) — no extra libs
+    # st.code renders with a built-in one-click copy icon (top-right) — no extra libs
     st.code(note_text, language="text")
     st.download_button(
         label="⬇️ Download as .txt",
         data=note_text,
-        file_name=f"leave_note_{int(year)}_{int(month):02d}.txt",
+        file_name=f"leave_summary_{int(year)}_{int(month):02d}.txt",
         mime="text/plain",
     )
 
