@@ -20,7 +20,8 @@ st.set_page_config(page_title="Leave Calculator", page_icon="📅", layout="cent
 
 # ---------- Helpers ----------
 def _fmt_date(d: dt.date) -> str:
-    return f"{d.isoformat()} · {calendar.day_name[d.weekday()][:3]} {d.day} {calendar.month_name[d.month][:3]}"
+    """User-facing format: 'Mon 11 May'."""
+    return f"{calendar.day_name[d.weekday()][:3]} {d.day} {calendar.month_name[d.month][:3]}"
 
 
 # ---------- Initialize session state for accumulated leaves ----------
@@ -75,8 +76,8 @@ month_end = (month_start.replace(day=1) + dt.timedelta(days=31)).replace(day=1) 
 
 st.info(
     f"**{calendar.month_name[month]} {year}**  ·  "
-    f"{month_start.isoformat()} → {month_end.isoformat()}  ·  "
-    f"{STATE_LABELS[state]}"
+    f"{STATE_LABELS[state]}  ·  "
+    f"Shift: {shift_time}"
 )
 
 # ---------- Step 2: pick leave dates (accumulating) ----------
@@ -125,57 +126,64 @@ st.write("")
 if st.button("Calculate", type="primary", use_container_width=True):
     result = compute_month(int(month), int(year), state, confirmed_leaves)
 
-    # ----- Result -----
-    st.write("---")
-    st.subheader("3 · Result")
-
-    # Top row — the two numbers that matter, large and aligned
-    r1c1, r1c2 = st.columns(2)
-    r1c1.metric(
-        label=f"Net working days · {calendar.month_name[month]} {year}",
-        value=f"{result.working_days:.0f}",
+    # ----- Result: hero card -----
+    st.write("")
+    st.markdown(
+        f"""
+        <div style="
+            text-align:center;
+            padding:2rem 1rem 1.5rem;
+            background:linear-gradient(135deg,#f8f9fa,#eef2f7);
+            border-radius:16px;
+            border:1px solid #e0e4ea;
+        ">
+            <p style="font-size:0.85rem;letter-spacing:0.08em;text-transform:uppercase;
+                     color:#6b7280;margin:0 0 0.3rem 0;">Net working days</p>
+            <h1 style="font-size:4.5rem;font-weight:800;margin:0;line-height:1;
+                       color:#1a1a2e;">{result.working_days:.0f}</h1>
+            <p style="font-size:1rem;color:#6b7280;margin:0.5rem 0 0 0;">
+                {calendar.month_name[month]} {year}
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-    r1c2.metric(
-        label="Leaves counted",
-        value=f"{len(result.leave_days_used)}",
-    )
 
-    # Compact breakdown — 3 numbers, aligned
-    r2c1, r2c2, r2c3 = st.columns(3)
-    r2c1.metric("Total days", result.total_days)
-    r2c2.metric("Public holidays", len(result.public_holidays))
-    r2c3.metric("Leaves taken", len(result.leave_days_used))
+    # Compact one-line breakdown — inline stats, no boxes
+    st.markdown("&nbsp;")
+    bd = st.columns(4)
+    stats = [
+        ("Total", str(result.total_days)),
+        ("Holidays", str(len(result.public_holidays))),
+        ("Leaves", str(len(result.leave_days_used))),
+        ("Weekends", str(len(result.weekend_days))),
+    ]
+    for col, (label, val) in zip(bd, stats):
+        col.markdown(
+            f'<div style="text-align:center;">'
+            f'<p style="font-size:2rem;font-weight:700;margin:0;color:#1a1a2e;">{val}</p>'
+            f'<p style="font-size:0.8rem;color:#6b7280;margin:0;text-transform:uppercase;'
+            f'letter-spacing:0.05em;">{label}</p>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
-    # Warnings
+    # Warnings — compact, only if needed
     if result.leave_on_nonworking:
-        with st.expander(f"⚠️ {len(result.leave_on_nonworking)} leave(s) fell on weekends/holidays — not deducted"):
+        st.markdown("&nbsp;")
+        with st.expander(f"⚠️ {len(result.leave_on_nonworking)} leave(s) on non-working days — not counted"):
             ph_dates = {pd for pd, _ in result.public_holidays}
             for d in result.leave_on_nonworking:
                 tags = []
                 if d.weekday() in (5, 6):
-                    tags.append(calendar.day_name[d.weekday()])
+                    tags.append(calendar.day_name[d.weekday()][:3])
                 if d in ph_dates:
-                    tags.append("public holiday")
+                    tags.append("holiday")
                 st.write(f"- {_fmt_date(d)}  ·  _{' / '.join(tags)}_")
 
-    # Optional detail — collapsed by default
-    with st.expander("Public holidays this month"):
-        if result.public_holidays:
-            for d, n in result.public_holidays:
-                st.write(f"- `{d.isoformat()}` · {n}")
-        else:
-            st.write("_none_")
-
-    with st.expander("Leaves counted"):
-        if result.leave_days_used:
-            for d in result.leave_days_used:
-                st.write(f"- {_fmt_date(d)}")
-        else:
-            st.write("_none — no working-day leaves._")
-
     # ---------- Summary (forwardable note) ----------
-    st.write("---")
-    st.subheader("4 · Summary")
+    st.write("")
+    st.markdown("---")
     note_lines = [
         f"Subject: Leave summary — {calendar.month_name[month]} {year}",
         "",
@@ -183,10 +191,10 @@ if st.button("Calculate", type="primary", use_container_width=True):
         "",
         f"Please find below my leave summary for {calendar.month_name[month]} {year}:",
         "",
-        f"  Shift timing                 : {shift_time}",
-        f"  Total calendar days          : {result.total_days}",
-        f"  Public / gazetted holidays    : {len(result.public_holidays)}",
-        f"  Leaves taken                  : {len(result.leave_days_used)}",
+        f"  Shift timing               : {shift_time}",
+        f"  Total calendar days         : {result.total_days}",
+        f"  Public / gazetted holidays   : {len(result.public_holidays)}",
+        f"  Leaves taken                 : {len(result.leave_days_used)}",
         "",
         f"  Net working days              = {result.working_days:.0f}",
         "",
@@ -194,24 +202,18 @@ if st.button("Calculate", type="primary", use_container_width=True):
     if result.public_holidays:
         note_lines.append("Public holidays:")
         for d, n in result.public_holidays:
-            note_lines.append(f"  - {d.isoformat()} · {n}")
+            note_lines.append(f"  - {_fmt_date(d)} · {n}")
         note_lines.append("")
     if result.leave_days_used:
         note_lines.append("Leave dates:")
         for d in result.leave_days_used:
-            note_lines.append(f"  - {d.isoformat()} ({calendar.day_name[d.weekday()]})")
+            note_lines.append(f"  - {_fmt_date(d)}")
         note_lines.append("")
     note_lines += ["Thanks,", "[Your name]"]
     note_text = "\n".join(note_lines)
 
-    # st.code renders with a built-in one-click copy icon (top-right) — no extra libs
+    st.markdown("##### Summary — click copy icon to copy")
     st.code(note_text, language="text")
-    st.download_button(
-        label="⬇️ Download as .txt",
-        data=note_text,
-        file_name=f"leave_summary_{int(year)}_{int(month):02d}.txt",
-        mime="text/plain",
-    )
 
 st.write("")
-st.caption("_Holiday source: `holidays` lib (India PUBLIC+OPTIONAL) + RBI 2nd/4th Saturday rule_")
+st.caption("_Holidays: `holidays` lib (India) + RBI 2nd/4th Saturday rule_")
