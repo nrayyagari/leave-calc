@@ -31,7 +31,6 @@ if "leaves" not in st.session_state:
 
 # ---------- Header ----------
 st.title("📅 Leave Calculator")
-st.caption("Indian IT · public holidays · 5-day week (Sat+Sun off)")
 
 today = dt.date.today()
 last_of_prev = today.replace(day=1) - dt.timedelta(days=1)
@@ -75,16 +74,16 @@ month_end = (month_start.replace(day=1) + dt.timedelta(days=31)).replace(day=1) 
 st.subheader("2 · Pick leave dates")
 
 # Sub-UI: pick one date at a time, add to session_state list
-picker_cols = st.columns([2, 1, 1])
+# Date box takes reasonable width; Add and Clear are minimal, aligned with it
+picker_cols = st.columns([3, 1, 1])
 with picker_cols[0]:
     new_date = st.date_input(
-        "Add a leave date",
+        "Pick a date",
         value=None,
         min_value=month_start,
         max_value=month_end,
     )
 with picker_cols[1]:
-    st.write("")  # vertical spacer to align button with date input
     if st.button("＋ Add", use_container_width=True):
         if new_date is not None:
             d = dt.date(int(year), int(month), new_date.day)
@@ -93,7 +92,6 @@ with picker_cols[1]:
                 st.session_state.leaves.sort()
             st.rerun()
 with picker_cols[2]:
-    st.write("")
     if st.button("✕ Clear", use_container_width=True):
         st.session_state.leaves = []
         st.rerun()
@@ -218,33 +216,23 @@ if st.button("Calculate", type="primary", use_container_width=True):
     note_lines += ["Thanks,", "[Your name]"]
     note_text = "\n".join(note_lines)
 
-    # Prominent copy button using HTML/JS to put note on clipboard
+    # --- Prominent copy button (HTML/JS) ---
     import streamlit.components.v1 as components
-    escaped = note_text.replace("`", "\\`").replace("${", "\\${")
-    copy_html = f"""
+    escaped = note_text.replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${")
+    components.html(f"""
     <style>
       .copy-btn {{
-        background: #1a1a2e;
-        color: white;
-        border: none;
-        padding: 0.6rem 1.2rem;
-        border-radius: 8px;
-        font-size: 0.95rem;
-        font-weight: 500;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        margin: 0 auto;
+        background: #1a1a2e; color: white; border: none;
+        padding: 0.7rem 1.5rem; border-radius: 10px;
+        font-size: 1rem; font-weight: 600; cursor: pointer;
+        box-shadow: 0 2px 8px rgba(26,26,46,0.15);
+        transition: all 0.2s;
       }}
-      .copy-btn:hover {{ background: #2a2a4e; }}
+      .copy-btn:hover {{ background: #2a2a4e; transform: translateY(-1px); }}
+      .copy-btn:active {{ transform: translateY(0); }}
       .copy-feedback {{
-        text-align:center;
-        color:#10a010;
-        font-size:0.85rem;
-        margin-top:0.4rem;
-        opacity:0;
-        transition: opacity 0.3s;
+        text-align:center; color:#10a010; font-size:0.85rem;
+        margin-top:0.5rem; opacity:0; transition: opacity 0.3s;
       }}
       .copy-feedback.show {{ opacity:1; }}
     </style>
@@ -259,11 +247,18 @@ if st.button("Calculate", type="primary", use_container_width=True):
       ">📋 Copy summary to clipboard</button>
       <div class="copy-feedback">Copied!</div>
     </div>
-    """
-    components.html(copy_html, height=80)
+    """, height=80)
 
-    # Note content shown below the button for preview
-    st.text(note_text)
+    # --- Note inside a styled bordered box with correctly aligned text ---
+    # Use st.container with a border for the visual box
+    with st.container(border=True):
+        # Render the note as preformatted text (monospaced = aligned columns)
+        st.markdown(
+            f'<pre style="font-family: \'SF Mono\', \'Consolas\', monospace; '
+            f'font-size: 0.88rem; line-height: 1.6; white-space: pre; '
+            f'margin: 0; padding: 0;">{note_text}</pre>',
+            unsafe_allow_html=True,
+        )
 
 st.write("")
-st.caption("_Holidays: `holidays` lib (India) + RBI 2nd/4th Saturday rule_")
+st.caption("_Public holidays sourced from official Indian gazetted holiday data_")
