@@ -11,10 +11,11 @@ import datetime as dt
 
 import streamlit as st
 
-from leavecalc import (
-    STATE_LABELS,
-    compute_month,
-)
+from leavecalc import compute_month
+
+# Region: user-facing label → backend state code (for holiday lib)
+REGION_OPTIONS = ["Hyderabad", "Bangalore"]
+REGION_CODES = {"Hyderabad": "TG", "Bangalore": "KA"}
 
 st.set_page_config(page_title="Leave Calculator", page_icon="📅", layout="centered")
 
@@ -38,63 +39,52 @@ default_month, default_year = last_of_prev.month, last_of_prev.year
 
 # ---------- Step 1: confirm period ----------
 st.subheader("1 · Confirm period")
-col_m, col_y, col_s = st.columns([2, 2, 3])
-with col_m:
+# Row 1: Month (narrow), Year (narrow), Region (narrow), Shift timing (wider)
+r1c1, r1c2, r1c3, r1c4 = st.columns([1.3, 1, 1.5, 2])
+with r1c1:
     month = st.selectbox(
         "Month",
         options=list(range(1, 13)),
         index=default_month - 1,
         format_func=calendar.month_name.__getitem__,
-        label_visibility="collapsed",
+        label_visibility="visible",
     )
-with col_y:
+with r1c2:
     year = st.number_input(
         "Year",
         min_value=2020,
         max_value=2100,
         value=default_year,
         step=1,
-        label_visibility="collapsed",
     )
-with col_s:
-    state = st.selectbox(
-        "State",
-        options=list(STATE_LABELS.keys()),
+with r1c3:
+    region = st.selectbox("Region", options=REGION_OPTIONS, index=0)
+    state = REGION_CODES[region]
+with r1c4:
+    SHIFT_OPTIONS = ["13:30 – 22:30 IST", "08:00 – 17:00 IST"]
+    shift_time = st.selectbox(
+        "Shift timing (IST)",
+        options=SHIFT_OPTIONS,
         index=0,
-        format_func=STATE_LABELS.__getitem__,
-        label_visibility="collapsed",
     )
-
-shift_time = st.text_input(
-    "Shift timing (IST)",
-    value="13:30 – 22:30 IST",
-    help="Editable. Included verbatim in the summary to your manager.",
-)
 
 month_start = dt.date(int(year), int(month), 1)
 month_end = (month_start.replace(day=1) + dt.timedelta(days=31)).replace(day=1) - dt.timedelta(days=1)
-
-st.info(
-    f"**{calendar.month_name[month]} {year}**  ·  "
-    f"{STATE_LABELS[state]}  ·  "
-    f"Shift: {shift_time}"
-)
 
 # ---------- Step 2: pick leave dates (accumulating) ----------
 st.subheader("2 · Pick leave dates")
 
 # Sub-UI: pick one date at a time, add to session_state list
-picker_cols = st.columns([3, 1, 1])
+picker_cols = st.columns([2, 1, 1])
 with picker_cols[0]:
     new_date = st.date_input(
         "Add a leave date",
         value=None,
         min_value=month_start,
         max_value=month_end,
-        label_visibility="collapsed",
-        help="Pick a date and click 'Add'. Repeat for each leave date.",
     )
 with picker_cols[1]:
+    st.write("")  # vertical spacer to align button with date input
     if st.button("＋ Add", use_container_width=True):
         if new_date is not None:
             d = dt.date(int(year), int(month), new_date.day)
@@ -103,7 +93,8 @@ with picker_cols[1]:
                 st.session_state.leaves.sort()
             st.rerun()
 with picker_cols[2]:
-    if st.button("✕ Clear all", use_container_width=True):
+    st.write("")
+    if st.button("✕ Clear", use_container_width=True):
         st.session_state.leaves = []
         st.rerun()
 
@@ -111,9 +102,7 @@ with picker_cols[2]:
 confirmed_leaves: list[dt.date] = []
 if st.session_state.leaves:
     st.write("**Selected leave dates**  ·  _untick to remove_")
-    cols_per_row = 3
-    # Render as a grid of checkboxes using st.columns
-    for idx, d in enumerate(st.session_state.leaves):
+    for d in st.session_state.leaves:
         if d.month != int(month) or d.year != int(year):
             continue
         if st.checkbox(_fmt_date(d), value=True, key=f"lv_{d.isoformat()}"):
@@ -150,10 +139,11 @@ if st.button("Calculate", type="primary", use_container_width=True):
     )
 
     # Compact one-line breakdown — inline stats, no boxes
+    working_days_pre_leave = result.total_days - len(result.weekend_days) - len(result.public_holidays)
     st.markdown("&nbsp;")
     bd = st.columns(4)
     stats = [
-        ("Total", str(result.total_days)),
+        ("Calendar days", str(result.total_days)),
         ("Holidays", str(len(result.public_holidays))),
         ("Leaves", str(len(result.leave_days_used))),
         ("Weekends", str(len(result.weekend_days))),
@@ -184,6 +174,19 @@ if st.button("Calculate", type="primary", use_container_width=True):
     # ---------- Summary (forwardable note) ----------
     st.write("")
     st.markdown("---")
+
+    # Compute working days = calendar days - weekends - public holidays
+    working_days_pre_leave = result.total_days - len(result.weekend_days) - len(result.public_holidays)
+
+    # Build aligned note — label width fixed for clean column alignment
+    LABEL_W = 28  # width of left label column
+
+    def _row(label: str, value: str) -> str:
+        return f"{label.ljust(LABEL_W)}: {value}"
+
+    def _row_eq(label: str, value: str) -> str:
+        return f"{label.ljust(LABEL_W)} = {value}"
+
     note_lines = [
         f"Subject: Leave summary — {calendar.month_name[month]} {year}",
         "",
@@ -191,12 +194,15 @@ if st.button("Calculate", type="primary", use_container_width=True):
         "",
         f"Please find below my leave summary for {calendar.month_name[month]} {year}:",
         "",
-        f"  Shift timing               : {shift_time}",
-        f"  Total calendar days         : {result.total_days}",
-        f"  Public / gazetted holidays   : {len(result.public_holidays)}",
-        f"  Leaves taken                 : {len(result.leave_days_used)}",
+        _row("Shift timing", shift_time),
+        _row("Total calendar days", str(result.total_days)),
+        _row("Weekends (Sat + Sun)", str(len(result.weekend_days))),
+        _row("Public / gazetted holidays", str(len(result.public_holidays))),
         "",
-        f"  Net working days              = {result.working_days:.0f}",
+        _row_eq("Working days (pre-leave)", str(working_days_pre_leave)),
+        _row("Leaves taken", str(len(result.leave_days_used))),
+        "",
+        _row_eq("Net working days", str(int(result.working_days))),
         "",
     ]
     if result.public_holidays:
@@ -212,8 +218,52 @@ if st.button("Calculate", type="primary", use_container_width=True):
     note_lines += ["Thanks,", "[Your name]"]
     note_text = "\n".join(note_lines)
 
-    st.markdown("##### Summary — click copy icon to copy")
-    st.code(note_text, language="text")
+    # Prominent copy button using HTML/JS to put note on clipboard
+    import streamlit.components.v1 as components
+    escaped = note_text.replace("`", "\\`").replace("${", "\\${")
+    copy_html = f"""
+    <style>
+      .copy-btn {{
+        background: #1a1a2e;
+        color: white;
+        border: none;
+        padding: 0.6rem 1.2rem;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        font-weight: 500;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin: 0 auto;
+      }}
+      .copy-btn:hover {{ background: #2a2a4e; }}
+      .copy-feedback {{
+        text-align:center;
+        color:#10a010;
+        font-size:0.85rem;
+        margin-top:0.4rem;
+        opacity:0;
+        transition: opacity 0.3s;
+      }}
+      .copy-feedback.show {{ opacity:1; }}
+    </style>
+    <div style="text-align:center;">
+      <button class="copy-btn" onclick="
+        const text = `{escaped}`;
+        navigator.clipboard.writeText(text).then(() => {{
+          const fb = document.querySelector('.copy-feedback');
+          fb.classList.add('show');
+          setTimeout(() => fb.classList.remove('show'), 2000);
+        }});
+      ">📋 Copy summary to clipboard</button>
+      <div class="copy-feedback">Copied!</div>
+    </div>
+    """
+    components.html(copy_html, height=80)
+
+    # Note content shown below the button for preview
+    st.text(note_text)
 
 st.write("")
 st.caption("_Holidays: `holidays` lib (India) + RBI 2nd/4th Saturday rule_")
