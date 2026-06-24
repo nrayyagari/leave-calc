@@ -1,4 +1,4 @@
-"""Streamlit UI for the Monthly Overtime / Working-Day Calculator.
+"""Streamlit UI for the Monthly Leave / Overtime Calculator.
 
 All pure logic lives in `leavecalc.py`. This file only renders UI and calls
 `compute_month(...)` from user inputs.
@@ -16,20 +16,32 @@ from leavecalc import (
     compute_month,
 )
 
-st.set_page_config(page_title="Monthly Overtime Calc", page_icon=":bank:", layout="centered")
+st.set_page_config(page_title="Leave Calculator", page_icon="📅", layout="centered")
 
-st.title(":bank: Monthly Overtime — Working-Day Calculator")
-st.caption(
-    "Indian bank-holiday aware (gazetted holidays + RBI 2nd/4th Saturday rule) · "
-    "5-day week (Sat+Sun) · Karnataka default"
-)
+# ---------- Polite helpers ----------
+def _fmt_date(d: dt.date) -> str:
+    return f"{d.isoformat()} · {calendar.day_name[d.weekday()][:3]} {d.day} {calendar.month_name[d.month][:3]}"
 
-# --- Step 1: confirm month & year ---
-st.subheader("Step 1 — Confirm the month you're reporting for")
+
+def _normalize_dates(value) -> list[dt.date]:
+    """st.date_input returns a single date or a list-tuple; normalize to list."""
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return sorted(set(value))
+    return [value]
+
+
+# ---------- Header ----------
+st.title("📅 Leave Calculator")
+st.caption("Indian IT · public holidays · 5-day week (Sat+Sun off)")
+
 today = dt.date.today()
 last_of_prev = today.replace(day=1) - dt.timedelta(days=1)
 default_month, default_year = last_of_prev.month, last_of_prev.year
 
+# ---------- Step 1: confirm period ----------
+st.subheader("1 · Confirm period")
 col_m, col_y, col_s = st.columns([2, 2, 3])
 with col_m:
     month = st.selectbox(
@@ -37,105 +49,139 @@ with col_m:
         options=list(range(1, 13)),
         index=default_month - 1,
         format_func=calendar.month_name.__getitem__,
+        label_visibility="collapsed",
     )
 with col_y:
-    year = st.number_input("Year", min_value=2020, max_value=2100, value=default_year, step=1)
+    year = st.number_input(
+        "Year",
+        min_value=2020,
+        max_value=2100,
+        value=default_year,
+        step=1,
+        label_visibility="collapsed",
+    )
 with col_s:
-    state = st.selectbox("State", options=list(STATE_LABELS.keys()),
-                         index=0, format_func=STATE_LABELS.__getitem__)
+    state = st.selectbox(
+        "State",
+        options=list(STATE_LABELS.keys()),
+        index=0,
+        format_func=STATE_LABELS.__getitem__,
+        label_visibility="collapsed",
+    )
+
+# Shift timing (free text, defaults to 13:30–22:30 IST)
+shift_time = st.text_input(
+    "Shift timing (IST)",
+    value="13:30 – 22:30 IST",
+    help="Editable. Included verbatim in the note to your manager.",
+)
 
 month_start = dt.date(int(year), int(month), 1)
 month_end = (month_start.replace(day=1) + dt.timedelta(days=31)).replace(day=1) - dt.timedelta(days=1)
 
 st.info(
-    f"Reporting period: **{calendar.month_name[month]} {year}** "
-    f"({month_start.isoformat()} → {month_end.isoformat()}) — {STATE_LABELS[state]}"
+    f"**{calendar.month_name[month]} {year}**  ·  "
+    f"{month_start.isoformat()} → {month_end.isoformat()}  ·  "
+    f"{STATE_LABELS[state]}"
 )
 
-# --- Step 2: leave entry ---
-st.subheader("Step 2 — Enter leave dates taken this month")
-leaves = st.date_input(
-    "Select all leave dates (multi-select)",
+# ---------- Step 2: pick leave dates ----------
+st.subheader("2 · Pick leave dates")
+picked_raw = st.date_input(
+    "Pick dates (click each one; pick multiple)",
     value=[],
     min_value=month_start,
     max_value=month_end,
-    help="Pick each date you took leave. Dates outside this month or on weekends/holidays are ignored with a warning.",
+    help="Click each date you took leave. Below they appear as tickable options — untick any you don't want counted.",
+    label_visibility="collapsed",
 )
+picked = _normalize_dates(picked_raw)
 
-# --- Compute ---
-if st.button("Compute working days", type="primary"):
-    result = compute_month(int(month), int(year), state, list(leaves))
+# ---------- Step 2b: tickable confirm ----------
+confirmed_leaves: list[dt.date] = []
+if picked:
+    st.write("**Confirm leaves** — untick to exclude:")
+    for d in picked:
+        label = _fmt_date(d)
+        if st.checkbox(label, value=True, key=f"lv_{d.isoformat()}"):
+            confirmed_leaves.append(d)
+else:
+    st.caption("_No leave dates picked yet._")
 
-    st.subheader("Result")
-    st.metric(
-        label=f"Working days in {calendar.month_name[month]} {year}",
+# ---------- Compute ----------
+st.write("")
+if st.button("Calculate working days", type="primary", use_container_width=True):
+    result = compute_month(int(month), int(year), state, confirmed_leaves)
+
+    # ----- Result banner -----
+    st.write("---")
+    st.subheader("3 · Result")
+    big1, big2 = st.columns([1, 1])
+    big1.metric(
+        label=f"Net working days · {calendar.month_name[month]} {year}",
         value=f"{result.working_days:.0f}",
-        help="After subtracting weekends, public holidays, RBI 2nd/4th Saturdays, and your leaves.",
+    )
+    big2.metric(
+        label="Leaves counted",
+        value=f"{len(result.leave_days_used)}",
     )
 
-    st.write("---")
-    c1, c2, c3, c4 = st.columns(4)
+    # ----- Compact breakdown -----
+    c1, c2, c3 = st.columns(3)
     c1.metric("Total days", result.total_days)
-    c2.metric("Weekends (Sat+Sun)", len(result.weekend_days))
-    c3.metric("Public holidays", len(result.public_holidays))
-    c4.metric("Bank Saturdays (2nd/4th)", len(result.bank_saturdays))
+    c2.metric("Public holidays", len(result.public_holidays))
+    c3.metric("Leaves taken", len(result.leave_days_used))
 
-    with st.expander("Public / gazetted holidays this month"):
+    # ----- Warnings (overlapping leaves) -----
+    if result.leave_on_nonworking:
+        with st.expander(f"⚠️ {len(result.leave_on_nonworking)} leave(s) fell on weekends/holidays — not deducted"):
+            ph_dates = {pd for pd, _ in result.public_holidays}
+            for d in result.leave_on_nonworking:
+                tags = []
+                if d.weekday() in (5, 6):
+                    tags.append(calendar.day_name[d.weekday()])
+                if d in ph_dates:
+                    tags.append("public holiday")
+                st.write(f"- {_fmt_date(d)}  ·  _{' / '.join(tags)}_")
+
+    # ----- Detail expanders (kept collapsed by default) -----
+    with st.expander("Public holidays this month"):
         if result.public_holidays:
             for d, n in result.public_holidays:
-                st.write(f"- `{d.isoformat()}` — {n}")
+                st.write(f"- `{d.isoformat()}` · {n}")
         else:
             st.write("_none_")
 
-    with st.expander("Bank-closure Saturdays (RBI 2nd/4th)"):
-        if result.bank_saturdays:
-            for d in result.bank_saturdays:
-                st.write(f"- `{d.isoformat()}` — {calendar.day_name[d.weekday()]}")
-        else:
-            st.write("_none this month_")
-
-    with st.expander("Leaves you entered"):
+    with st.expander("Leaves counted"):
         if result.leave_days_used:
-            st.write("**Counted leaves (deducted from working days):**")
             for d in result.leave_days_used:
-                st.write(f"- `{d.isoformat()}` — {calendar.day_name[d.weekday()]}")
+                st.write(f"- {_fmt_date(d)}")
         else:
-            st.write("_No working-day leaves entered._")
+            st.write("_none — no working-day leaves._")
 
-        if result.leave_on_nonworking:
-            st.warning(
-                "These leave dates fell on weekends or holidays — "
-                "**not deducted** (no loss of a working day):"
-            )
-            ph_dates = {pd for pd, _ in result.public_holidays}
-            for d in result.leave_on_nonworking:
-                labels = []
-                if d.weekday() in (5, 6):
-                    labels.append(calendar.day_name[d.weekday()])
-                if d in ph_dates:
-                    labels.append("public holiday")
-                if d in set(result.bank_saturdays):
-                    labels.append("bank Saturday")
-                st.write(f"- `{d.isoformat()}` — {' / '.join(labels)}")
-
-    # --- Forwardable note ---
+    # ---------- Manager note (compact: only public holidays + leaves) ----------
     st.write("---")
-    st.subheader("Note for your manager (copy or download)")
+    st.subheader("4 · Note for your manager")
     note_lines = [
-        f"Subject: Monthly overtime note — {calendar.month_name[month]} {year}",
+        f"Subject: Leave note — {calendar.month_name[month]} {year}",
         "",
         "Hi [Manager],",
         "",
-        f"Please find below my working-day summary for {calendar.month_name[month]} {year}:",
-        f"- Total calendar days: {result.total_days}",
-        f"- Weekends (Sat+Sun): {len(result.weekend_days)}",
-        f"- Public / gazetted holidays: {len(result.public_holidays)}",
-        f"- Bank-closure Saturdays (2nd/4th): {len(result.bank_saturdays)}",
-        f"- Leaves taken (working days): {len(result.leave_days_used)}",
+        f"Please find below my leave summary for {calendar.month_name[month]} {year}:",
         "",
-        f"Net working days = {result.working_days:.0f}",
+        f"  Shift timing               : {shift_time}",
+        f"  Total calendar days         : {result.total_days}",
+        f"  Public / gazetted holidays   : {len(result.public_holidays)}",
+        f"  Leaves taken                 : {len(result.leave_days_used)}",
+        "",
+        f"  Net working days             = {result.working_days:.0f}",
         "",
     ]
+    if result.public_holidays:
+        note_lines.append("Public holidays:")
+        for d, n in result.public_holidays:
+            note_lines.append(f"  - {d.isoformat()} · {n}")
+        note_lines.append("")
     if result.leave_days_used:
         note_lines.append("Leave dates:")
         for d in result.leave_days_used:
@@ -144,16 +190,14 @@ if st.button("Compute working days", type="primary"):
     note_lines += ["Thanks,", "[Your name]"]
     note_text = "\n".join(note_lines)
 
-    st.text_area("Copy-paste this note", value=note_text, height=300)
+    # st.code renders with a one-click copy icon (top-right) — no extra libs
+    st.code(note_text, language="text")
     st.download_button(
-        label="Download note (txt)",
+        label="⬇️ Download as .txt",
         data=note_text,
-        file_name=f"overtime_note_{int(year)}_{int(month):02d}.txt",
+        file_name=f"leave_note_{int(year)}_{int(month):02d}.txt",
         mime="text/plain",
     )
 
-st.write("---")
-st.caption(
-    "Holiday source: `holidays` lib (India PUBLIC+OPTIONAL) + RBI 2nd/4th Saturday rule · "
-    "5-day week default"
-)
+st.write("")
+st.caption("_Holiday source: `holidays` lib (India PUBLIC+OPTIONAL) + RBI 2nd/4th Saturday rule_")
