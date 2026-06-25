@@ -207,29 +207,30 @@ if st.session_state.show_result:
     with st.container(border=True):
         st.subheader("3 · Result")
         st.caption(f"{month_label} · {region} · {shift_time}")
-        result_tabs = st.tabs(["Net working days", "Breakdown"])
+        st.metric("Net working days", int(result.working_days))
+        st.caption("Final count after weekends, public holidays, and counted leave dates.")
+        st.divider()
 
-        with result_tabs[0]:
-            st.metric("Net working days", int(result.working_days))
-            st.caption("Final count after weekends, public holidays, and counted leave dates.")
+        breakdown_cols = st.columns(2, gap="large")
+        with breakdown_cols[0]:
+            st.caption("Working days (pre-leave)")
+            st.markdown(f"#### {working_days_pre_leave}")
+        with breakdown_cols[1]:
+            st.caption("Leaves counted")
+            st.markdown(f"#### {len(result.leave_days_used)}")
 
-        with result_tabs[1]:
-            top_stats = st.columns(2, gap="small")
-            top_stats[0].metric("Working days pre-leave", working_days_pre_leave)
-            top_stats[1].metric("Leaves counted", len(result.leave_days_used))
-
-            if result.leave_on_nonworking:
-                with st.expander(
-                    f"{len(result.leave_on_nonworking)} leave date(s) fall on non-working days and are not counted"
-                ):
-                    holiday_dates = {day for day, _ in result.public_holidays}
-                    for leave_date in result.leave_on_nonworking:
-                        tags = []
-                        if leave_date.weekday() in (5, 6):
-                            tags.append(calendar.day_name[leave_date.weekday()][:3])
-                        if leave_date in holiday_dates:
-                            tags.append("holiday")
-                        st.write(f"- {_fmt_date(leave_date)} · {' / '.join(tags)}")
+        if result.leave_on_nonworking:
+            with st.expander(
+                f"{len(result.leave_on_nonworking)} leave date(s) fall on non-working days and are not counted"
+            ):
+                holiday_dates = {day for day, _ in result.public_holidays}
+                for leave_date in result.leave_on_nonworking:
+                    tags = []
+                    if leave_date.weekday() in (5, 6):
+                        tags.append(calendar.day_name[leave_date.weekday()][:3])
+                    if leave_date in holiday_dates:
+                        tags.append("holiday")
+                    st.write(f"- {_fmt_date(leave_date)} · {' / '.join(tags)}")
 
     note_text = _build_summary_note(
         month=month_num,
