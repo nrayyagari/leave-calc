@@ -17,10 +17,6 @@ from leavecalc import compute_month, get_selectable_leave_dates
 REGION_OPTIONS = ["Hyderabad", "Bangalore"]
 REGION_CODES = {"Hyderabad": "TG", "Bangalore": "KA"}
 SHIFT_OPTIONS = ["13:30 - 22:30 IST", "08:00 - 17:00 IST"]
-OUTLOOK_LOGO_URL = (
-    "https://commons.wikimedia.org/wiki/"
-    "Special:Redirect/file/Microsoft_Outlook_Icon_%282025%E2%80%93present%29.svg"
-)
 
 st.set_page_config(
     page_title="LeaveC",
@@ -147,21 +143,22 @@ with st.container(border=True):
             state,
             existing_leave_dates=current_leaves,
         )
-        picker_options: list[dt.date | None] = [None, *available_leave_dates]
-        new_date = st.selectbox(
+        new_date = st.date_input(
             "Pick a date",
-            options=picker_options,
-            index=0,
-            format_func=lambda d: "Select a working day" if d is None else _fmt_date(d),
+            value=None,
+            min_value=dt.date(year_num, month_num, 1),
+            max_value=dt.date(year_num, month_num, calendar.monthrange(year_num, month_num)[1]),
             key=f"leave_picker_{st.session_state.leave_picker_nonce}",
-            disabled=not available_leave_dates,
         )
+        if new_date is not None and new_date not in available_leave_dates:
+            st.caption("Weekends and company holidays cannot be added.")
         if not available_leave_dates:
             st.caption("No working dates available for selection in this month.")
         action_cols = st.columns(2, gap="small")
         with action_cols[0]:
-            if st.button("Add date", use_container_width=True):
-                if new_date is not None:
+            add_disabled = new_date is None or new_date not in available_leave_dates
+            if st.button("Add date", use_container_width=True, disabled=add_disabled):
+                if new_date is not None and new_date in available_leave_dates:
                     if new_date not in st.session_state.leaves:
                         st.session_state.leaves.append(new_date)
                         st.session_state.leaves.sort()
@@ -242,12 +239,10 @@ outlook_url = f"mailto:?subject={mailto_subject}&body={mailto_body}"
 
 with st.container(border=True):
     st.subheader("4 · Copy text")
-    summary_actions = st.columns([0.18, 0.95, 1.87], gap="small", vertical_alignment="center")
+    summary_actions = st.columns([1.0, 2.0], gap="small", vertical_alignment="center")
     with summary_actions[0]:
-        st.image(OUTLOOK_LOGO_URL, width=20)
-    with summary_actions[1]:
         st.link_button("Open in Outlook", outlook_url, use_container_width=True)
-    with summary_actions[2]:
+    with summary_actions[1]:
         st.caption("Use the copy icon in the top-right of the copy text box.")
     st.code(note_text)
 
