@@ -214,16 +214,13 @@ if st.session_state.show_result:
         st.subheader("3 · Result")
         st.caption(f"{month_label} · {region} · {shift_time}")
         st.metric("Net working days", int(result.working_days))
-        st.caption("Final count after weekends, public holidays, and counted leave dates.")
         st.divider()
 
-        breakdown_cols = st.columns(2, gap="large")
+        breakdown_cols = st.columns(2, gap="small")
         with breakdown_cols[0]:
-            st.caption("Working days (pre-leave)")
-            st.markdown(f"#### {working_days_pre_leave}")
+            st.markdown(f"Working days (pre-leave): **{working_days_pre_leave}**")
         with breakdown_cols[1]:
-            st.caption("Leaves counted")
-            st.markdown(f"#### {len(result.leave_days_used)}")
+            st.markdown(f"Leaves counted: **{len(result.leave_days_used)}**")
 
         if result.leave_on_nonworking:
             with st.expander(
