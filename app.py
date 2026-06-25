@@ -30,6 +30,11 @@ def _fmt_date(d: dt.date) -> str:
     return f"{calendar.day_name[d.weekday()][:3]} {d.day} {calendar.month_name[d.month][:3]}"
 
 
+def _fmt_month_day(d: dt.date) -> str:
+    """Compact date format for summaries: '11 May'."""
+    return f"{d.day} {calendar.month_name[d.month][:3]}"
+
+
 def _leave_key(d: dt.date) -> str:
     return f"lv_{d.isoformat()}"
 
@@ -51,8 +56,8 @@ def _build_summary_note(
     result,
     working_days_pre_leave: int,
 ) -> str:
-    public_holiday_details = "; ".join(
-        f"{_fmt_date(day)} · {name}" for day, name in result.public_holidays
+    public_holiday_details = ", ".join(
+        f"{_fmt_month_day(day)}-{name}" for day, name in result.public_holidays
     )
     public_holidays_value = str(len(result.public_holidays))
     if public_holiday_details:
@@ -98,8 +103,8 @@ def _build_summary_preview(
     result,
     working_days_pre_leave: int,
 ) -> str:
-    public_holiday_details = "; ".join(
-        f"{_fmt_date(day)} · {name}" for day, name in result.public_holidays
+    public_holiday_details = ", ".join(
+        f"{_fmt_month_day(day)}-{name}" for day, name in result.public_holidays
     )
     public_holidays_value = str(len(result.public_holidays))
     if public_holiday_details:
@@ -247,10 +252,9 @@ if st.session_state.show_result:
             st.caption("Final count after weekends, public holidays, and counted leave dates.")
 
         with result_tabs[1]:
-            top_stats = st.columns(3, gap="small")
+            top_stats = st.columns(2, gap="small")
             top_stats[0].metric("Working days pre-leave", working_days_pre_leave)
             top_stats[1].metric("Leaves counted", len(result.leave_days_used))
-            top_stats[2].metric("Public holidays", len(result.public_holidays))
 
             if result.leave_on_nonworking:
                 with st.expander(
@@ -282,17 +286,7 @@ if st.session_state.show_result:
 
     with st.container(border=True):
         st.subheader("4 · Summary message")
-        summary_actions = st.columns([1.2, 2], gap="small")
-        with summary_actions[0]:
-            st.download_button(
-                "Download summary (.txt)",
-                data=note_text,
-                file_name=f"leave-summary-{year_num}-{month_num:02d}.txt",
-                mime="text/plain",
-                use_container_width=True,
-            )
-        with summary_actions[1]:
-            st.caption("Use the copy icon in the top-right of the copy text box.")
+        st.caption("Use the copy icon in the top-right of the copy text box.")
 
         summary_tabs = st.tabs(["Preview", "Copy text"])
         with summary_tabs[0]:
