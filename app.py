@@ -206,12 +206,10 @@ with st.container(border=True):
     with st.container(horizontal=True, horizontal_alignment="center"):
         st.metric("Net working days", int(result.working_days))
     st.markdown("---")
-
-    breakdown_cols = st.columns(2, gap="small")
-    with breakdown_cols[0]:
-        st.markdown(f"Working days (pre-leave): **{working_days_pre_leave}**")
-    with breakdown_cols[1]:
-        st.markdown(f"Leaves counted: **{len(result.leave_days_used)}**")
+    st.markdown(
+        f"**Breakdown:** Working days (pre-leave) **{working_days_pre_leave}** - "
+        f"Leaves counted **{len(result.leave_days_used)}**"
+    )
 
     if result.leave_on_nonworking:
         with st.expander(
