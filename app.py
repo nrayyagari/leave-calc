@@ -151,7 +151,7 @@ with st.container(border=True):
             key=f"leave_picker_{st.session_state.leave_picker_nonce}",
         )
         if new_date is not None and new_date not in available_leave_dates:
-            st.caption("Weekends and company holidays cannot be added.")
+            st.error("Mathhu Vadalara! Weekends and company holidays cannot be added as Leave")
         if not available_leave_dates:
             st.caption("No working dates available for selection in this month.")
         action_cols = st.columns(2, gap="small")
