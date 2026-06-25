@@ -17,6 +17,10 @@ from leavecalc import compute_month
 REGION_OPTIONS = ["Hyderabad", "Bangalore"]
 REGION_CODES = {"Hyderabad": "TG", "Bangalore": "KA"}
 SHIFT_OPTIONS = ["13:30 - 22:30 IST", "08:00 - 17:00 IST"]
+OUTLOOK_LOGO_URL = (
+    "https://commons.wikimedia.org/wiki/"
+    "Special:Redirect/file/Microsoft_Outlook_Icon_%282025%E2%80%93present%29.svg"
+)
 
 st.set_page_config(
     page_title="LeaveC",
@@ -199,8 +203,7 @@ month_label = f"{calendar.month_name[month_num]} {year_num}"
 with st.container(border=True):
     st.subheader("3 · Result")
     st.caption(f"{month_label} · {region} · {shift_time}")
-    result_value_cols = st.columns([1, 1.35, 1], gap="small")
-    with result_value_cols[1]:
+    with st.container(horizontal=True, horizontal_alignment="center"):
         st.metric("Net working days", int(result.working_days))
     st.markdown("---")
 
@@ -236,10 +239,12 @@ outlook_url = f"mailto:?subject={mailto_subject}&body={mailto_body}"
 
 with st.container(border=True):
     st.subheader("4 · Copy text")
-    summary_actions = st.columns([1.05, 1.95], gap="small")
+    summary_actions = st.columns([0.18, 0.95, 1.87], gap="small", vertical_alignment="center")
     with summary_actions[0]:
-        st.link_button("📧 Open in Outlook", outlook_url, use_container_width=True)
+        st.image(OUTLOOK_LOGO_URL, width=20)
     with summary_actions[1]:
+        st.link_button("Open in Outlook", outlook_url, use_container_width=True)
+    with summary_actions[2]:
         st.caption("Use the copy icon in the top-right of the copy text box.")
     st.code(note_text)
 
