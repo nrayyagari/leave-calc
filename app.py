@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import calendar
 import datetime as dt
+from pathlib import Path
 from urllib.parse import quote
 
 import streamlit as st
@@ -17,10 +18,11 @@ from leavecalc import compute_month
 REGION_OPTIONS = ["Hyderabad", "Bangalore"]
 REGION_CODES = {"Hyderabad": "TG", "Bangalore": "KA"}
 SHIFT_OPTIONS = ["13:30 - 22:30 IST", "08:00 - 17:00 IST"]
+ICON_PATH = Path(__file__).with_name("assets") / "leavec-jan06.png"
 
 st.set_page_config(
     page_title="LeaveC",
-    page_icon="📅",
+    page_icon=str(ICON_PATH),
     layout="centered",
     initial_sidebar_state="collapsed",
 )
@@ -104,8 +106,12 @@ if "show_result" not in st.session_state:
 if "leave_picker_nonce" not in st.session_state:
     st.session_state.leave_picker_nonce = 0
 
-st.title("📅 LeaveC")
-st.caption("Monthly working-day summary for email updates.")
+header_cols = st.columns([0.16, 1], gap="small")
+with header_cols[0]:
+    st.image(str(ICON_PATH), width=50)
+with header_cols[1]:
+    st.title("LeaveC")
+    st.caption("Monthly working-day summary for email updates.")
 
 today = dt.date.today()
 last_of_prev = today.replace(day=1) - dt.timedelta(days=1)
