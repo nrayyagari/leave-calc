@@ -10,7 +10,7 @@ import calendar
 import datetime as dt
 from dataclasses import dataclass
 
-import holidays
+from company_holidays import get_company_holidays
 
 # ---------- Configuration defaults (overridable by callers) ----------
 WEEKEND_DAYS_5DAY = (5, 6)        # Sat=5, Sun=6 — standard Indian IT 5-day week
@@ -61,14 +61,31 @@ def get_bank_saturdays(year: int, month: int) -> list[dt.date]:
 
 
 def get_public_holidays(year: int, month: int, state: str) -> list[tuple[dt.date, str]]:
-    """Return PUBLIC + OPTIONAL gazetted holidays for the state in that month."""
-    ind = holidays.country_holidays(
-        "IN",
-        subdiv=state,
-        years=year,
-        language="en_US",
-    )
-    return [(d, name) for d, name in sorted(ind.items()) if d.month == month]
+    """Return company-defined holidays for the state in that month."""
+    return [(d, name) for d, name in get_company_holidays(year, state) if d.month == month]
+
+
+def get_selectable_leave_dates(
+    month: int,
+    year: int,
+    state: str,
+    existing_leave_dates: list[dt.date] | None = None,
+    weekend_days: tuple[int, ...] = WEEKEND_DAYS_5DAY,
+) -> list[dt.date]:
+    """Return working dates that may still be selected as leave."""
+    _, days_in_month = calendar.monthrange(year, month)
+    all_days = [dt.date(year, month, d) for d in range(1, days_in_month + 1)]
+
+    ph_dates = {d for d, _ in get_public_holidays(year, month, state)}
+    bank_sat_dates = set(get_bank_saturdays(year, month))
+    weekend_set = {d for d in all_days if d.weekday() in weekend_days}
+    already_selected = {
+        d for d in (existing_leave_dates or [])
+        if d.month == month and d.year == year
+    }
+
+    blocked = ph_dates | bank_sat_dates | weekend_set | already_selected
+    return [d for d in all_days if d not in blocked]
 
 
 def compute_month(

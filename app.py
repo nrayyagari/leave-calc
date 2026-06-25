@@ -12,7 +12,7 @@ from urllib.parse import quote
 
 import streamlit as st
 
-from leavecalc import compute_month
+from leavecalc import compute_month, get_selectable_leave_dates
 
 REGION_OPTIONS = ["Hyderabad", "Bangalore"]
 REGION_CODES = {"Hyderabad": "TG", "Bangalore": "KA"}
@@ -42,12 +42,6 @@ def _fmt_month_day(d: dt.date) -> str:
 
 def _leave_key(d: dt.date) -> str:
     return f"lv_{d.isoformat()}"
-
-
-def _month_bounds(year: int, month: int) -> tuple[dt.date, dt.date]:
-    month_start = dt.date(year, month, 1)
-    month_end = (month_start + dt.timedelta(days=31)).replace(day=1) - dt.timedelta(days=1)
-    return month_start, month_end
 
 
 def _current_month_leaves(month: int, year: int) -> list[dt.date]:
@@ -139,29 +133,39 @@ with st.container(border=True):
 month_num = int(month)
 year_num = int(year)
 state = REGION_CODES[region]
-month_start, month_end = _month_bounds(year_num, month_num)
+current_leaves = _current_month_leaves(month_num, year_num)
+confirmed_leaves: list[dt.date] = current_leaves.copy()
 
 with st.container(border=True):
     st.subheader("2 · Leave dates")
     picker_cols = st.columns([0.85, 1.4], gap="large")
 
     with picker_cols[0]:
-        new_date = st.date_input(
-            "Pick a date",
-            value=None,
-            min_value=month_start,
-            max_value=month_end,
-            key=f"leave_picker_{st.session_state.leave_picker_nonce}",
+        available_leave_dates = get_selectable_leave_dates(
+            month_num,
+            year_num,
+            state,
+            existing_leave_dates=current_leaves,
         )
+        picker_options: list[dt.date | None] = [None, *available_leave_dates]
+        new_date = st.selectbox(
+            "Pick a date",
+            options=picker_options,
+            index=0,
+            format_func=lambda d: "Select a working day" if d is None else _fmt_date(d),
+            key=f"leave_picker_{st.session_state.leave_picker_nonce}",
+            disabled=not available_leave_dates,
+        )
+        if not available_leave_dates:
+            st.caption("No working dates available for selection in this month.")
         action_cols = st.columns(2, gap="small")
         with action_cols[0]:
             if st.button("Add date", use_container_width=True):
                 if new_date is not None:
-                    leave_date = dt.date(year_num, month_num, new_date.day)
-                    if leave_date not in st.session_state.leaves:
-                        st.session_state.leaves.append(leave_date)
+                    if new_date not in st.session_state.leaves:
+                        st.session_state.leaves.append(new_date)
                         st.session_state.leaves.sort()
-                    st.session_state[_leave_key(leave_date)] = True
+                    st.session_state[_leave_key(new_date)] = True
                     st.session_state.leave_picker_nonce += 1
                     st.rerun()
         with action_cols[1]:
@@ -173,11 +177,9 @@ with st.container(border=True):
                 st.rerun()
 
     with picker_cols[1]:
-        current_leaves = _current_month_leaves(month_num, year_num)
-        confirmed_leaves: list[dt.date] = []
-
         st.caption("Selected leave dates")
         if current_leaves:
+            confirmed_leaves = []
             for leave_date in current_leaves:
                 if st.checkbox(
                     _fmt_date(leave_date),
@@ -193,6 +195,7 @@ with st.container(border=True):
                     for leave_date in st.session_state.leaves
                     if leave_date not in removed_leaves
                 )
+                st.rerun()
         else:
             st.caption(f"No leave dates selected for {calendar.month_name[month_num]} {year_num}.")
 

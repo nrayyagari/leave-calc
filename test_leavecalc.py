@@ -13,6 +13,7 @@ from leavecalc import (
     WEEKEND_DAYS_6DAY,
     compute_month,
     get_bank_saturdays,
+    get_selectable_leave_dates,
     nth_weekday_of_month,
 )
 
@@ -63,6 +64,15 @@ def test_leave_on_public_holiday_ignored():
     r = compute_month(6, 2026, "KA", [dt.date(2026, 6, 26)])
     _check(r.working_days == 21, f"WD still 21 (got {r.working_days})")
     _check(len(r.leave_on_nonworking) == 1, "warned")
+
+
+def test_selectable_leave_dates_exclude_non_working_days():
+    print("Selectable leave dates exclude weekends, company holidays, and selected leaves:")
+    selectable = get_selectable_leave_dates(6, 2026, "KA", [dt.date(2026, 6, 1)])
+    _check(dt.date(2026, 6, 1) not in selectable, "already selected leave is excluded")
+    _check(dt.date(2026, 6, 6) not in selectable, "weekend is excluded")
+    _check(dt.date(2026, 6, 26) not in selectable, "company holiday is excluded")
+    _check(dt.date(2026, 6, 2) in selectable, "working day remains selectable")
 
 
 def test_multiple_leaves_mixed():
