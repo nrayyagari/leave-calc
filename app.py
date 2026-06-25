@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import calendar
 import datetime as dt
-from urllib.parse import quote
 
 import streamlit as st
 
@@ -236,20 +235,10 @@ if st.session_state.show_result:
         result=result,
         working_days_pre_leave=working_days_pre_leave,
     )
-    mailto_subject = quote(f"Leave summary - {month_label}")
-    mailto_body = quote(note_text)
-    outlook_draft_url = f"mailto:?subject={mailto_subject}&body={mailto_body}"
 
     with st.container(border=True):
         st.subheader("4 · Copy text")
-        summary_actions = st.columns([1.15, 1.85], gap="small")
-        with summary_actions[0]:
-            st.link_button("Open in Outlook draft", outlook_draft_url, use_container_width=True)
-        with summary_actions[1]:
-            st.caption(
-                "Use the copy icon in the top-right of the copy text box. "
-                "The Outlook button opens a prefilled draft in your default mail app."
-            )
+        st.caption("Use the copy icon in the top-right of the copy text box.")
         st.code(note_text)
     
     with st.container(border=True):
