@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import calendar
 import datetime as dt
+from urllib.parse import quote
 
 import streamlit as st
 
@@ -94,45 +95,6 @@ def _build_summary_note(
 
     note_lines.extend(["", "Thanks,", "[Your name]"])
     return "\n".join(note_lines)
-
-
-def _build_summary_preview(
-    month: int,
-    year: int,
-    shift_time: str,
-    result,
-    working_days_pre_leave: int,
-) -> str:
-    public_holiday_details = ", ".join(
-        f"{_fmt_month_day(day)}-{name}" for day, name in result.public_holidays
-    )
-    public_holidays_value = str(len(result.public_holidays))
-    if public_holiday_details:
-        public_holidays_value = f"{public_holidays_value} ({public_holiday_details})"
-
-    lines = [
-        f"**Subject:** Leave summary - {calendar.month_name[month]} {year}",
-        "",
-        "Hi,",
-        "",
-        (
-            f"Please find below my leave summary for {calendar.month_name[month]} {year} "
-            f"for the {shift_time} shift."
-        ),
-        "",
-        f"Working days (pre-leave): {working_days_pre_leave}",
-        f"Public holidays: {public_holidays_value}",
-        f"Leaves taken: {len(result.leave_days_used)}",
-        "",
-        f"**Net working days: {int(result.working_days)}**",
-    ]
-
-    if result.leave_days_used:
-        lines.extend(["", "Leave dates"])
-        lines.extend(f"- {_fmt_date(day)}" for day in result.leave_days_used)
-
-    lines.extend(["", "Thanks,", "[Your name]"])
-    return "\n".join(lines)
 
 
 if "leaves" not in st.session_state:
@@ -276,23 +238,21 @@ if st.session_state.show_result:
         result=result,
         working_days_pre_leave=working_days_pre_leave,
     )
-    note_preview = _build_summary_preview(
-        month=month_num,
-        year=year_num,
-        shift_time=shift_time,
-        result=result,
-        working_days_pre_leave=working_days_pre_leave,
-    )
+    mailto_subject = quote(f"Leave summary - {month_label}")
+    mailto_body = quote(note_text)
+    outlook_draft_url = f"mailto:?subject={mailto_subject}&body={mailto_body}"
 
     with st.container(border=True):
-        st.subheader("4 · Summary message")
-        st.caption("Use the copy icon in the top-right of the copy text box.")
-
-        summary_tabs = st.tabs(["Preview", "Copy text"])
-        with summary_tabs[0]:
-            st.markdown(note_preview)
-        with summary_tabs[1]:
-            st.code(note_text)
+        st.subheader("4 · Copy text")
+        summary_actions = st.columns([1.15, 1.85], gap="small")
+        with summary_actions[0]:
+            st.link_button("Open in Outlook draft", outlook_draft_url, use_container_width=True)
+        with summary_actions[1]:
+            st.caption(
+                "Use the copy icon in the top-right of the copy text box. "
+                "The Outlook button opens a prefilled draft in your default mail app."
+            )
+        st.code(note_text)
     
     with st.container(border=True):
         st.subheader("5 · Reference")
