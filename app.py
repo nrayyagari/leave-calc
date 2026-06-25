@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import calendar
 import datetime as dt
+from urllib.parse import quote
 
 import streamlit as st
 
@@ -98,8 +99,6 @@ def _build_summary_note(
 
 if "leaves" not in st.session_state:
     st.session_state.leaves = []
-if "show_result" not in st.session_state:
-    st.session_state.show_result = False
 if "leave_picker_nonce" not in st.session_state:
     st.session_state.leave_picker_nonce = 0
 
@@ -197,52 +196,55 @@ result = compute_month(month_num, year_num, state, confirmed_leaves)
 working_days_pre_leave = result.total_days - len(result.weekend_days) - len(result.public_holidays)
 month_label = f"{calendar.month_name[month_num]} {year_num}"
 
-action_cols = st.columns([1, 1.35, 1])
-with action_cols[1]:
-    if st.button("Calculate", type="primary", use_container_width=True):
-        st.session_state.show_result = True
-
-if st.session_state.show_result:
-    with st.container(border=True):
-        st.subheader("3 · Result")
-        st.caption(f"{month_label} · {region} · {shift_time}")
+with st.container(border=True):
+    st.subheader("3 · Result")
+    st.caption(f"{month_label} · {region} · {shift_time}")
+    result_value_cols = st.columns([1, 1.35, 1], gap="small")
+    with result_value_cols[1]:
         st.metric("Net working days", int(result.working_days))
-        st.divider()
+    st.markdown("---")
 
-        breakdown_cols = st.columns(2, gap="small")
-        with breakdown_cols[0]:
-            st.markdown(f"Working days (pre-leave): **{working_days_pre_leave}**")
-        with breakdown_cols[1]:
-            st.markdown(f"Leaves counted: **{len(result.leave_days_used)}**")
+    breakdown_cols = st.columns(2, gap="small")
+    with breakdown_cols[0]:
+        st.markdown(f"Working days (pre-leave): **{working_days_pre_leave}**")
+    with breakdown_cols[1]:
+        st.markdown(f"Leaves counted: **{len(result.leave_days_used)}**")
 
-        if result.leave_on_nonworking:
-            with st.expander(
-                f"{len(result.leave_on_nonworking)} leave date(s) fall on non-working days and are not counted"
-            ):
-                holiday_dates = {day for day, _ in result.public_holidays}
-                for leave_date in result.leave_on_nonworking:
-                    tags = []
-                    if leave_date.weekday() in (5, 6):
-                        tags.append(calendar.day_name[leave_date.weekday()][:3])
-                    if leave_date in holiday_dates:
-                        tags.append("holiday")
-                    st.write(f"- {_fmt_date(leave_date)} · {' / '.join(tags)}")
+    if result.leave_on_nonworking:
+        with st.expander(
+            f"{len(result.leave_on_nonworking)} leave date(s) fall on non-working days and are not counted"
+        ):
+            holiday_dates = {day for day, _ in result.public_holidays}
+            for leave_date in result.leave_on_nonworking:
+                tags = []
+                if leave_date.weekday() in (5, 6):
+                    tags.append(calendar.day_name[leave_date.weekday()][:3])
+                if leave_date in holiday_dates:
+                    tags.append("holiday")
+                st.write(f"- {_fmt_date(leave_date)} · {' / '.join(tags)}")
 
-    note_text = _build_summary_note(
-        month=month_num,
-        year=year_num,
-        shift_time=shift_time,
-        result=result,
-        working_days_pre_leave=working_days_pre_leave,
-    )
+note_text = _build_summary_note(
+    month=month_num,
+    year=year_num,
+    shift_time=shift_time,
+    result=result,
+    working_days_pre_leave=working_days_pre_leave,
+)
+mailto_subject = quote(f"Leave summary - {month_label}")
+mailto_body = quote(note_text)
+outlook_url = f"mailto:?subject={mailto_subject}&body={mailto_body}"
 
-    with st.container(border=True):
-        st.subheader("4 · Copy text")
+with st.container(border=True):
+    st.subheader("4 · Copy text")
+    summary_actions = st.columns([1.05, 1.95], gap="small")
+    with summary_actions[0]:
+        st.link_button("📧 Open in Outlook", outlook_url, use_container_width=True)
+    with summary_actions[1]:
         st.caption("Use the copy icon in the top-right of the copy text box.")
-        st.code(note_text)
-    
-    with st.container(border=True):
-        st.subheader("5 · Reference")
-        reference_stats = st.columns(2, gap="small")
-        reference_stats[0].metric(f"Total calendar days in {month_label}", result.total_days)
-        reference_stats[1].metric("Weekends", len(result.weekend_days))
+    st.code(note_text)
+
+with st.container(border=True):
+    st.subheader("5 · Reference")
+    reference_stats = st.columns(2, gap="small")
+    reference_stats[0].metric(f"Total calendar days in {month_label}", result.total_days)
+    reference_stats[1].metric("Weekends", len(result.weekend_days))
